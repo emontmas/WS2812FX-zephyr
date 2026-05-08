@@ -70,48 +70,29 @@
 #include "mbed.h"  // Needed for DigitalOut and PinName
 #endif
 
+
+#include <ctype.h>
+#include <zephyr/logging/log.h>
+
+LOG_MODULE_REGISTER(Adafruit_NeoPixel, CONFIG_LOG_DEFAULT_LEVEL);
+
 /*!
-  @brief   NeoPixel constructor when length, pin and pixel type are known
-           at compile-time.
-  @param   n  Number of NeoPixels in strand.
-  @param   p  Arduino pin number which will drive the NeoPixel data in.
-  @param   t  Pixel type -- add together NEO_* constants defined in
-              Adafruit_NeoPixel.h, for example NEO_GRB+NEO_KHZ800 for
-              NeoPixels expecting an 800 KHz (vs 400 KHz) data stream
-              with color bytes expressed in green, red, blue order per
-              pixel.
+  @brief   NeoPixel constructor for Zephyr led strip. Assume color type is RGB.
+  @param   s  Zephyr device of the led strip to drive.
+  @todo TODO get pixel type from device struct config and support more than RGB.
+        Remark: pixel format is usually handled by the underlying Zephyr driver.
   @return  Adafruit_NeoPixel object. Call the begin() function before use.
 */
-Adafruit_NeoPixel::Adafruit_NeoPixel(uint16_t n, int16_t p, neoPixelType t)
+Adafruit_NeoPixel::Adafruit_NeoPixel(const struct device* s)
     : begun(false), brightness(0), pixels(NULL), endTime(0) {
-  updateType(t);
-  updateLength(n);
-  setPin(p);
 
-#if defined(ESP32)
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
-  espInit();
-#endif
-#endif
-}
+  if (sizeof(struct led_rgb) != 3) {
+    LOG_ERR("sizeof(struct led_rgb) is %lu but not 3, NeoPixel objects won't work properly!", sizeof(struct led_rgb));
+  }
 
-/*!
-  @brief   "Empty" NeoPixel constructor when length, pin and/or pixel type
-           are not known at compile-time, and must be initialized later with
-           updateType(), updateLength() and setPin().
-  @return  Adafruit_NeoPixel object. Call the begin() function before use.
-  @note    This function is deprecated, here only for old projects that
-           may still be calling it. New projects should instead use the
-           'new' keyword with the first constructor syntax (length, pin,
-           type).
-*/
-Adafruit_NeoPixel::Adafruit_NeoPixel()
-    :
-#if defined(NEO_KHZ400)
-      is800KHz(true),
-#endif
-      begun(false), numLEDs(0), numBytes(0), pin(-1), brightness(0),
-      pixels(NULL), rOffset(1), gOffset(0), bOffset(2), wOffset(1), endTime(0) {
+  updateType(NEO_RGB);
+  updateLength((uint16_t)led_strip_length(s));
+  setStripDevice(s);
 }
 
 /*!
@@ -133,8 +114,6 @@ Adafruit_NeoPixel::~Adafruit_NeoPixel() {
 #endif
 
   free(pixels);
-  if (pin >= 0)
-    pinMode(pin, INPUT);
 }
 
 /*!
@@ -142,13 +121,6 @@ Adafruit_NeoPixel::~Adafruit_NeoPixel() {
   @returns False if we weren't able to claim resources required
 */
 bool Adafruit_NeoPixel::begin(void) {
-  if (pin >= 0) {
-    pinMode(pin, OUTPUT);
-    digitalWrite(pin, LOW);
-  } else {
-    begun = false;
-    return false;
-  }
 
 #if defined(ARDUINO_ARCH_RP2040)
   // if we're calling begin() again, unclaim any existing PIO resc.
@@ -157,7 +129,7 @@ bool Adafruit_NeoPixel::begin(void) {
     begun = false;
     return false;
   }
-  
+
 #endif
 
   begun = true;
@@ -455,7 +427,7 @@ void Adafruit_NeoPixel::show(void) {
 
   // NRF52 may use PWM + DMA (if available), may not need to disable interrupt
   // ESP32 may not disable interrupts because espShow() uses RMT which tries to acquire locks
-#if !(defined(NRF52) || defined(NRF52_SERIES) || defined(ESP32))
+#if !(defined(NRF52) || defined(NRF52_SERIES) || defined(ESP32) || defined(__ZEPHYR__))
   noInterrupts(); // Need 100% focus on instruction timing
 #endif
 
@@ -3104,7 +3076,7 @@ if(is800KHz) {
 
 #if defined(ARDUINO_PORTENTA_H7_M7) || (defined(ARDUINO_ARCH_MBED_GIGA) && defined(TARGET_M7))
 #define F_CPU 480000000
-#elif defined(ARDUINO_PORTENTA_H7_M4) || (defined(ARDUINO_ARCH_MBED_GIGA) && defined(TARGET_M4)) 
+#elif defined(ARDUINO_PORTENTA_H7_M4) || (defined(ARDUINO_ARCH_MBED_GIGA) && defined(TARGET_M4))
 #define F_CPU 240000000
 #else
 #define F_CPU 48000000
@@ -3327,51 +3299,25 @@ if(is800KHz) {
 #elif defined(ARDUINO_ARCH_RP2040) && defined(__riscv)
   rp2040Show(pixels, numBytes);  // Use PIO
 #else
-#error Architecture not supported
+
+  led_strip_update_rgb(strip, (led_rgb*)pixels, (size_t)numLEDs);
+
 #endif
 
   // END ARCHITECTURE SELECT ------------------------------------------------
 
-#if !(defined(NRF52) || defined(NRF52_SERIES) || defined(ESP32))
+#if !(defined(NRF52) || defined(NRF52_SERIES) || defined(ESP32) || defined(__ZEPHYR__))
   interrupts();
 #endif
 
-  endTime = micros(); // Save EOD time for latch on next call
 }
 
 /*!
-  @brief   Set/change the NeoPixel output pin number. Previous pin,
-           if any, is set to INPUT and the new pin is set to OUTPUT.
-  @param   p  Arduino pin number (-1 = no pin).
+  @brief   Set/change the NeoPixel Zehyr led stirp device.
+  @param   s  Zephyr led strip device.
 */
-void Adafruit_NeoPixel::setPin(int16_t p) {
-  if (begun && (pin >= 0))
-    pinMode(pin, INPUT); // Disable existing out pin
-  pin = p;
-  if (begun) {
-    pinMode(p, OUTPUT);
-    digitalWrite(p, LOW);
-  }
-#if defined(__AVR__)
-  port = portOutputRegister(digitalPinToPort(p));
-  pinMask = digitalPinToBitMask(p);
-#endif
-#if defined(ARDUINO_ARCH_STM32) || defined(ARDUINO_ARCH_ARDUINO_CORE_STM32)
-  gpioPort = digitalPinToPort(p);
-  gpioPin = STM_LL_GPIO_PIN(digitalPinToPinName(p));
-#elif defined(_PY32_DEF_)
-  gpioPort = digitalPinToPort(p);
-  gpioPin = PY32_LL_GPIO_PIN(digitalPinToPinName(p));
-#elif defined(ARDUINO_ARCH_CH32)
-  PinName const pin_name = digitalPinToPinName(pin);
-  gpioPort = get_GPIO_Port(CH_PORT(pin_name));
-  gpioPin = CH_GPIO_PIN(pin_name);
-  #if defined (CH32V20x_D6)
-  if (gpioPort == GPIOC && ((*(volatile uint32_t*)0x40022030) & 0x0F000000) == 0) {
-    gpioPin = gpioPin >> 13;
-  }
-  #endif
-#endif
+void Adafruit_NeoPixel::setStripDevice(const struct device* s) {
+  strip = s;
 }
 
 /*!
