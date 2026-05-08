@@ -472,10 +472,10 @@ class WS2812FX : public Adafruit_NeoPixel {
       uint16_t extDataCnt = 0;    // number of elements in the external data array
     } segment_runtime;
 
-    WS2812FX(uint16_t num_leds, uint8_t pin, neoPixelType type,
+    WS2812FX(const struct device* s = NULL,
       uint8_t max_num_segments=MAX_NUM_SEGMENTS,
       uint8_t max_num_active_segments=MAX_NUM_ACTIVE_SEGMENTS)
-      : Adafruit_NeoPixel(num_leds, pin, type) {
+      : Adafruit_NeoPixel(s) {
 
       brightness = DEFAULT_BRIGHTNESS + 1; // Adafruit_NeoPixel internally offsets brightness by 1
       _running = false;
@@ -493,7 +493,7 @@ class WS2812FX : public Adafruit_NeoPixel {
       _seg_rt  = _segment_runtimes;
 
       resetSegments();
-      setSegment(0, 0, num_leds - 1, DEFAULT_MODE, DEFAULT_COLOR, DEFAULT_SPEED, NO_OPTIONS);
+      setSegment(0, 0, numLEDs - 1, DEFAULT_MODE, DEFAULT_COLOR, DEFAULT_SPEED, NO_OPTIONS);
     };
 
     void
@@ -758,12 +758,12 @@ class WS2812FX : public Adafruit_NeoPixel {
 
 class WS2812FXT {
   public:
-    WS2812FXT(uint16_t num_leds, uint8_t pin, neoPixelType type,
+    WS2812FXT(const struct device* s = NULL,
       uint8_t max_num_segments=MAX_NUM_SEGMENTS,
       uint8_t max_num_active_segments=MAX_NUM_ACTIVE_SEGMENTS) {
-        v1 = new WS2812FX(num_leds, pin, type, max_num_segments, max_num_active_segments);
-        v2 = new WS2812FX(num_leds, pin, type, max_num_segments, max_num_active_segments);
-        dest = new WS2812FX(num_leds, pin, type, max_num_segments, max_num_active_segments); 
+        v1 = new WS2812FX(s, max_num_segments, max_num_active_segments);
+        v2 = new WS2812FX(s, max_num_segments, max_num_active_segments);
+        dest = new WS2812FX(s, max_num_segments, max_num_active_segments);
     };
 
     void init(void) {
