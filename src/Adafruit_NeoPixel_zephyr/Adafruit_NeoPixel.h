@@ -56,6 +56,18 @@
 #include "rp2040_pio.h"
 #endif
 
+
+#include <cstdint>
+#include <cstddef>
+#include <stdlib.h>
+#include <string.h>
+
+#include <zephyr/drivers/led_strip.h>
+
+// For compatibility
+#define PROGMEM
+inline uint8_t pgm_read_byte(const uint8_t* ptr) { return *ptr; }
+
 // The order of primary colors in the NeoPixel data stream can vary among
 // device types, manufacturers and even different revisions of the same
 // item.  The third parameter to the Adafruit_NeoPixel constructor encodes
@@ -219,15 +231,12 @@ extern "C" void espInit();
 class Adafruit_NeoPixel {
 
 public:
-  // Constructor: number of LEDs, pin number, LED type
-  Adafruit_NeoPixel(uint16_t n, int16_t pin = 6,
-                    neoPixelType type = NEO_GRB + NEO_KHZ800);
-  Adafruit_NeoPixel(void);
+  Adafruit_NeoPixel(const struct device* s = NULL);
   ~Adafruit_NeoPixel();
 
   bool begin(void);
   void show(void);
-  void setPin(int16_t p);
+  void setStripDevice(const struct device* s);
   void setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b);
   void setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b, uint8_t w);
   void setPixelColor(uint16_t n, uint32_t c);
@@ -250,26 +259,10 @@ public:
              if show() would block (meaning some idle time is available).
   */
   bool canShow(void) {
-    // It's normal and possible for endTime to exceed micros() if the
-    // 32-bit clock counter has rolled over (about every 70 minutes).
-    // Since both are uint32_t, a negative delta correctly maps back to
-    // positive space, and it would seem like the subtraction below would
-    // suffice. But a problem arises if code invokes show() very
-    // infrequently...the micros() counter may roll over MULTIPLE times in
-    // that interval, the delta calculation is no longer correct and the
-    // next update may stall for a very long time. The check below resets
-    // the latch counter if a rollover has occurred. This can cause an
-    // extra delay of up to 300 microseconds in the rare case where a
-    // show() call happens precisely around the rollover, but that's
-    // neither likely nor especially harmful, vs. other code that might
-    // stall for 30+ minutes, or having to document and frequently remind
-    // and/or provide tech support explaining an unintuitive need for
-    // show() calls at least once an hour.
-    uint32_t now = micros();
-    if (endTime > now) {
-      endTime = now;
-    }
-    return (now - endTime) >= 300L;
+    // With zephyr, latching time is supposed to be hanlded by the driver.
+    // The led_strip_update_rgb() API method should block until it is ready to be called again,
+    // so the strip is ready to show again when returning from show().
+    return true;
   }
   /*!
     @brief   Get a pointer directly to the NeoPixel data buffer in RAM.
@@ -287,11 +280,6 @@ public:
   */
   uint8_t *getPixels(void) const { return pixels; };
   uint8_t getBrightness(void) const;
-  /*!
-    @brief   Retrieve the pin number used for NeoPixel data output.
-    @return  Arduino pin number (-1 if not set).
-  */
-  int16_t getPin(void) const { return pin; };
   /*!
     @brief   Return the number of pixels in an Adafruit_NeoPixel strip object.
     @return  Pixel count (0 if not set).
@@ -395,7 +383,7 @@ protected:
   bool begun;         ///< true if begin() previously called successfully
   uint16_t numLEDs;   ///< Number of RGB LEDs in strip
   uint16_t numBytes;  ///< Size of 'pixels' buffer below
-  int16_t pin;        ///< Output pin number (-1 if not yet set)
+  const struct device* strip;   ///< Zephyr Led Strip device. Use instead of bare pin attribute.
   uint8_t brightness; ///< Strip brightness 0-255 (stored as +1)
   uint8_t *pixels;    ///< Holds LED color values (3 or 4 bytes each)
   uint8_t rOffset;    ///< Red index within each 3- or 4-byte pixel
@@ -403,19 +391,6 @@ protected:
   uint8_t bOffset;    ///< Index of blue byte
   uint8_t wOffset;    ///< Index of white (==rOffset if no white)
   uint32_t endTime;   ///< Latch timing reference
-
-#ifdef __AVR__
-  volatile uint8_t *port; ///< Output PORT register
-  uint8_t pinMask;        ///< Output PORT bitmask
-#endif
-
-#if defined(ARDUINO_ARCH_STM32) || \
-    defined(ARDUINO_ARCH_ARDUINO_CORE_STM32) || \
-    defined(ARDUINO_ARCH_CH32) || \
-    defined(_PY32_DEF_)
-  GPIO_TypeDef *gpioPort; ///< Output GPIO PORT
-  uint32_t gpioPin;       ///< Output GPIO PIN
-#endif
 
 };
 
