@@ -37,6 +37,8 @@
 #ifndef WS2812FX_h
 #define WS2812FX_h
 
+#include "arduino_compat.h"
+
 #define FSH(x) (__FlashStringHelper*)(x)
 #define MAX_MILLIS (0UL - 1UL) /* ULONG_MAX */
 

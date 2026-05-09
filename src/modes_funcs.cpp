@@ -32,6 +32,8 @@
 */
 #include "WS2812FX.h"
 
+#include "arduino_compat.h"
+
 /*
   overload Adafruit_NeoPixel fill() function to respect segment boundaries
 */

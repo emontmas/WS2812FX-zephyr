@@ -33,6 +33,8 @@
 
 #include "WS2812FX.h"
 
+#include "arduino_compat.h"
+
 /* #####################################################
 #
 #  Mode Functions
@@ -922,7 +924,7 @@ uint16_t WS2812FX::mode_heartbeat(void) {
   if((beatTimer > 400) && !_seg_rt->aux_param) { // time for the second beat? (400ms after the first beat)
     uint16_t startLed = _seg->start + (_seg_len / 2) - size;
     fill(_seg->colors[0], startLed, size * 2); // create the second beat
-    
+
     _seg_rt->aux_param = true; // is second beat
   }
   if(beatTimer > 1200) { // time for the first beat? (1200ms)
